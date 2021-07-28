@@ -7,7 +7,7 @@ class PhpAT56 < Formula
   bottle do
     root_url "https://dl.bintray.com/exolnet/bottles-deprecated"
     rebuild 2
-    sha256 "73b687b813a0984e201b53c5f3f579365f6d0d0e434c9acbeb08eae6d2328c06" => :mojave
+    sha256 mojave: "73b687b813a0984e201b53c5f3f579365f6d0d0e434c9acbeb08eae6d2328c06"
   end
 
   keg_only :versioned_formula
@@ -44,9 +44,7 @@ class PhpAT56 < Formula
 
   def install
     # Ensure that libxml2 will be detected correctly in older MacOS
-    if MacOS.version == :el_capitan || MacOS.version == :sierra
-      ENV["SDKROOT"] = MacOS.sdk_path
-    end
+    ENV["SDKROOT"] = MacOS.sdk_path if MacOS.version == :el_capitan || MacOS.version == :sierra
 
     # buildconf required due to system library linking bug patch
     system "./buildconf", "--force"
@@ -171,7 +169,7 @@ class PhpAT56 < Formula
     system "make", "install"
 
     # Allow pecl to install outside of Cellar
-    extension_dir = Utils.popen_read("#{bin}/php-config --extension-dir").chomp
+    extension_dir = Utils.safe_popen_read("#{bin}/php-config", "--extension-dir").chomp
     orig_ext_dir = File.basename(extension_dir)
     inreplace bin/"php-config", lib/"php", prefix/"pecl"
     inreplace "php.ini-development", %r{; ?extension_dir = "\./"},
@@ -215,7 +213,7 @@ class PhpAT56 < Formula
     # Custom location for extensions installed via pecl
     pecl_path = HOMEBREW_PREFIX/"lib/php/pecl"
     ln_s pecl_path, prefix/"pecl" unless (prefix/"pecl").exist?
-    extension_dir = Utils.popen_read("#{bin}/php-config --extension-dir").chomp
+    extension_dir = Utils.safe_popen_read("#{bin}/php-config", "--extension-dir").chomp
     php_basename = File.basename(extension_dir)
     php_ext_dir = opt_prefix/"lib/php"/php_basename
 
@@ -235,7 +233,7 @@ class PhpAT56 < Formula
       "test_dir" => pear_path/"test",
       "php_bin"  => opt_bin/"php",
     }.each do |key, value|
-      value.mkpath if key =~ /(?<!bin|man)_dir$/
+      value.mkpath if /(?<!bin|man)_dir$/.match?(key)
       system bin/"pear", "config-set", key, value, "system"
     end
 
@@ -279,36 +277,37 @@ class PhpAT56 < Formula
     version.to_s.split(".")[0..1].join(".")
   end
 
-  plist_options :manual => "php-fpm"
+  plist_options manual: "php-fpm"
 
-  def plist; <<~EOS
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-      <dict>
-        <key>KeepAlive</key>
-        <true/>
-        <key>Label</key>
-        <string>#{plist_name}</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>#{opt_sbin}/php-fpm</string>
-          <string>--nodaemonize</string>
-        </array>
-        <key>RunAtLoad</key>
-        <true/>
-        <key>WorkingDirectory</key>
-        <string>#{var}</string>
-        <key>StandardErrorPath</key>
-        <string>#{var}/log/php-fpm.log</string>
-      </dict>
-    </plist>
-  EOS
+  def plist
+    <<~EOS
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+        <dict>
+          <key>KeepAlive</key>
+          <true/>
+          <key>Label</key>
+          <string>#{plist_name}</string>
+          <key>ProgramArguments</key>
+          <array>
+            <string>#{opt_sbin}/php-fpm</string>
+            <string>--nodaemonize</string>
+          </array>
+          <key>RunAtLoad</key>
+          <true/>
+          <key>WorkingDirectory</key>
+          <string>#{var}</string>
+          <key>StandardErrorPath</key>
+          <string>#{var}/log/php-fpm.log</string>
+        </dict>
+      </plist>
+    EOS
   end
 
   test do
-    assert_match /^Zend OPcache$/, shell_output("#{bin}/php -i"),
-      "Zend OPCache extension not loaded"
+    assert_match(/^Zend OPcache$/, shell_output("#{bin}/php -i"),
+      "Zend OPCache extension not loaded")
     # Test related to libxml2 and
     # https://github.com/Homebrew/homebrew-core/issues/28398
     assert_includes MachO::Tools.dylibs("#{bin}/php"),
@@ -317,8 +316,8 @@ class PhpAT56 < Formula
     system "#{bin}/phpdbg", "-V"
     system "#{bin}/php-cgi", "-m"
     # Prevent SNMP extension to be added
-    assert_no_match /^snmp$/, shell_output("#{bin}/php -m"),
-      "SNMP extension doesn't work reliably with Homebrew on High Sierra"
+    assert_no_match(/^snmp$/, shell_output("#{bin}/php -m"),
+      "SNMP extension doesn't work reliably with Homebrew on High Sierra")
     begin
       require "socket"
 
